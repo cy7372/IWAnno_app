@@ -5,7 +5,8 @@ __pycache__/
 
 prediction_results/
 outputs/
-models/
+
+*.onnx
 
 quantize.py
 
@@ -31,6 +32,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.pyc
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

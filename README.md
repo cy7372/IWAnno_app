@@ -10,8 +10,10 @@ IWAnno_app 是 IWAnno 模型的应用板块，旨在利用 ONNX 模型对卫星�
    ```bash
    pip install -r requirements.txt
    ```
+2. **安装模型**  
+   将.onnx模型文件放入models文件夹下
 
-2. **运行示例**  
+3. **运行示例**  
    项目根目录下的 $demo.py$ 文件展示了如何加载模型、对输入图像进行预测，以及展示和保存预测结果。请确保示例输入图像（例如 $example_input.png$）存在于项目根目录，或提供绝对路径。  
    运行示例：
    

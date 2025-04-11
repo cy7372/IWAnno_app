@@ -1,0 +1,6 @@
+numpy
+Pillow
+torchvision
+onnxruntime-gpu
+scipy
+tqdm

@@ -4,3 +4,4 @@ torchvision
 onnxruntime-gpu
 scipy
 tqdm
+scikit-image

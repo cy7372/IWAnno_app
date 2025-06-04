@@ -1,46 +1,57 @@
+# utils/onnx_model_loader.py
+
 import os
 import onnxruntime as ort
 
 class ONNXModelLoader:
     """
-    Model Initialization: 负责加载 ONNX 模型。
-    模型文件位于项目根目录下的 models 文件夹中，通过当前文件的路径来定位模型文件，
-    根据输入的 model_type 自动补全文件名：如果输入不包含 ".onnx"，则自动加上后缀 ".onnx"，
-    否则直接使用输入的文件名。
+    负责加载 ONNX 模型。
 
-    支持的模型类型示例包括：
-        - FY4A
-        - FY4B
-        - GK2A
-        - MODIS
-        - S1
+    使用方式示例：
+        loader = ONNXModelLoader("FY4A")      # 会在 models/FY4A.onnx 中查找
+        session = loader.load_model()
     """
-    def __init__(self, model_type):
-        # 保存模型类型或模型文件名
-        self.model_type = model_type
-        # 获取当前文件所在目录
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        # 假设 models 文件夹位于项目根目录下，即 utils 文件夹的上一级目录中的 models 文件夹
-        models_dir = os.path.join(current_dir, "..", "models")
-        
-        # 如果输入的 model_type 不包含 ".onnx" 后缀，则自动补全，否则直接使用输入值
-        if not model_type.lower().endswith(".onnx"):
-            filename = f"{model_type}.onnx"
-        else:
-            filename = model_type
-        
-        # 构造完整的模型文件路径
-        self.model_path = os.path.join(models_dir, filename)
-        
-        # 检查模型文件是否存在
-        if not os.path.exists(self.model_path):
-            raise FileNotFoundError(f"模型文件 {self.model_path} 不存在，请检查 model_type 是否正确。")
-        
-        self.session = None
 
-    def load_model(self):
-        # 指定使用 CUDAExecutionProvider 优先，如果不可用则回退到 CPUExecutionProvider
-        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        self.session = ort.InferenceSession(self.model_path, providers=providers)
-        print("ONNX model loaded:", self.model_type)
+    def __init__(self, model_type: str, onnx_dir: str = None):
+        """
+        :param model_type: 数据集关键字或 ONNX 文件名（可带或不带 .onnx 后缀）。
+        :param onnx_dir:   可选地指定 ONNX 模型所在的目录；
+                           如果为 None，则默认使用项目根目录下的 models/ 子文件夹。
+        """
+        # 如果 model_type 中没有 .onnx，就自动补全后缀
+        if not model_type.lower().endswith(".onnx"):
+            model_filename = model_type + ".onnx"
+        else:
+            model_filename = model_type
+
+        # 如果用户没传入 onnx_dir，就默认指向项目根目录下的 models/
+        if onnx_dir is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(current_dir)
+            onnx_dir = os.path.join(project_root, "models")
+
+        # 构造完整的 ONNX 文件路径
+        self.model_path = os.path.join(onnx_dir, model_filename)
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(
+                f"ONNX 模型文件不存在：{self.model_path}。\n"
+                f"• 请确认目录 {onnx_dir} 下确实有 '{model_filename}'，"
+                f"或检查传入的 model_type 是否拼写正确。"
+            )
+
+        self.session = None
+        self.model_type = model_type
+
+    def load_model(self) -> ort.InferenceSession:
+        """
+        加载 ONNX 模型，优先使用 CUDA，如果不可用则回退到 CPU。
+        返回：onnxruntime.InferenceSession 实例
+        """
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        try:
+            self.session = ort.InferenceSession(self.model_path, providers=providers)
+        except Exception as e:
+            raise RuntimeError(f"加载 ONNX 模型时出错：{e}")
+
+        print(f"ONNX model loaded: {os.path.basename(self.model_path)}")
         return self.session

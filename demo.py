@@ -1,42 +1,66 @@
+# demo.py
+
+import os
+from pathlib import Path
 from PIL import Image
-from predictor import ModelPredictor
-from utils.visualizer import PredictionVisualizer
+
+from utils.onnx_model_loader import ONNXModelLoader
+from utils.patch_inference     import PatchInferenceEngine
+from utils.visualizer          import PredictionVisualizer
+from utils.image_loader        import load_image  # 新增这一行
 
 if __name__ == '__main__':
-    # ----------------------------------------------------------------------------
-    # 模型加载与预测
-    # ----------------------------------------------------------------------------
-    # 创建 ModelPredictor 对象，并指定加载的模型类型（可选项： "FY4A", "FY4B", "GK2A", "MODIS", "S1"）
-    # 以及是否对预测结果进行小噪点去除处理（remove_small_noises）
-    # ModelPredictor 内部会自动加载位于 models 文件夹中的 FY4A.onnx 模型
-    # 并初始化图像预测所需的切片预测引擎。
-    model = ModelPredictor("FY4A", remove_small_noises=True)
+    # -------------------- 配置区 --------------------
+    INPUT_PATH    = "example_input.png"   # <--- 可以是 .tif/.tiff，也可以是 .png/.jpg
+    MODEL_KEY     = "GENERAL"                # 对应 models/GENERAL.onnx
+    OUTPUT_FOLDER = "outputs"                # 结果输出目录
 
-    # 利用 predictor 对指定输入图像进行预测
-    # 输入图像路径为 "example_input.png"，返回的预测结果为 NumPy 数组
-    # 数组中像素值通常为 0 或 255，便于后续的数值处理与定量分析
-    result = model.predict(input_image_path="example_input.png")
+    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-    # ----------------------------------------------------------------------------
-    # 结果展示与导出（使用 PredictionVisualizer 统一接口）
-    # ----------------------------------------------------------------------------
-    # 创建 PredictionVisualizer 对象，用于展示或保存预测结果图像
-    # 需要指定输出文件夹（此处为 "outputs"）和默认的输出文件名（例如与输入文件同名）
-    visualizer = PredictionVisualizer(output_folder="outputs", default_filename="example_input.png")
+    # -------------------- 1. 读取并处理输入 --------------------
+    pil_img, lon_arr, lat_arr = load_image(INPUT_PATH)
+    # 如果是 TIFF，lon_arr、lat_arr 就是 numpy.ndarray；否则都是 None
 
-    # 1. 保存仅包含预测结果的图像
-    # 使用 mode="prediction" 表示只输出预测结果，不显示原始输入图像
-    # 该方法会将预测结果转换为图像并保存到指定输出文件夹中
-    visualizer.save(result, mode="prediction")
+    # -------------------- 2. 加载 ONNX 模型 --------------------
+    loader  = ONNXModelLoader(MODEL_KEY)
+    session = loader.load_model()  # 会打印 "ONNX model loaded: GENERAL.onnx"
 
-    # 2. 显示输入图像与预测结果的并排对比图
-    # 先读取原始输入图像（转换为 RGB 模式），再调用 show 方法
-    # 使用 mode="comparison" 生成对比图，左侧为原始图像，右侧为预测结果图像
-    # 并直接调用系统图像查看器显示该对比图。
-    input_image = Image.open("example_input.png").convert("RGB")
-    visualizer.show(result, mode="comparison", input_image=input_image)
+    # -------------------- 3. 切片推理得到二值掩码 --------------------
+    engine    = PatchInferenceEngine(session, remove_small_noises=True)
+    pred_mask = engine.predict_image(pil_img)
+    # pred_mask: numpy.ndarray (H, W)，dtype=uint8，值为 0 或 255
 
-    # 3. 保存覆盖图，将预测结果以红色作为掩码覆盖在原始输入图像上
-    # 使用 mode="overlay"，并设置 overlay_alpha=0.5 表示覆盖图的透明度为 50%
-    # 最终生成的图像会将红色覆盖区域与原始图像混合后保存到输出文件夹中
-    visualizer.save(result, mode="overlay", input_image=input_image, overlay_alpha=0.5)
+    # -------------------- 4. 多模式保存 --------------------
+    base_name = Path(INPUT_PATH).stem  # 去掉后缀的文件名
+    viz = PredictionVisualizer(
+        output_folder=OUTPUT_FOLDER,
+        default_filename=f"{base_name}.png"
+    )
+
+    # 4.1 保存纯预测结果（二值掩码）
+    viz.save(pred_mask, mode="prediction")
+    print(f"[INFO] 已保存二值掩码 → {OUTPUT_FOLDER}/{base_name}.png")
+
+    # 4.2 并排对比：左原图，右掩码
+    viz.save(pred_mask, mode="comparison", input_image=pil_img)
+    print(f"[INFO] 已保存并排对比 → {OUTPUT_FOLDER}/{base_name}_comparison.png")
+
+    # 4.3 半透明覆盖：掩码覆盖在原图上
+    viz.save(
+        pred_mask,
+        mode="overlay",
+        input_image=pil_img,
+        overlay_alpha=0.5
+    )
+    print(f"[INFO] 已保存叠加覆盖 → {OUTPUT_FOLDER}/{base_name}_overlay.png")
+
+    # -------------------- 5. TIFF 时导出经纬度 TXT --------------------
+    if lon_arr is not None and lat_arr is not None:
+        txt_path = Path(OUTPUT_FOLDER) / f"{base_name}_locations.txt"
+        with open(txt_path, "w") as f:
+            rows, cols = (pred_mask > 128).nonzero()
+            for r, c in zip(rows, cols):
+                f.write(f"{lon_arr[r, c]:.6f},{lat_arr[r, c]:.6f}\n")
+        print(f"[INFO] 已保存经纬度 → {txt_path}")
+
+    print("[DONE] 全部处理完成。")

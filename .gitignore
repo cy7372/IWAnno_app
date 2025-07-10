@@ -9,6 +9,7 @@ outputs/
 *.onnx
 
 quantize.py
+datasets/
 
 # C extensions
 *.so

@@ -30,3 +30,9 @@ def load_image(path: str):
         # 对于普通图像，直接用 PIL 打开
         pil_img = Image.open(path).convert("RGB")
         return pil_img, None, None
+
+def load_image_auto(path: str):
+    """
+    兼容 utils.evaluation 所需的名称；直接调用 load_image。
+    """
+    return load_image(path)
